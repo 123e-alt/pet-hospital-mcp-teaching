@@ -1,8 +1,8 @@
 # 构建产物
-/dist/
+dist/
 
 # 运行时数据库（由程序自动创建）
-/data/
+data/
 *.db
 *.db.tmp
 
@@ -21,6 +21,8 @@
 # Python
 __pycache__/
 *.pyc
+.venv/
+venv/
 
 # Node（预留）
 node_modules/
