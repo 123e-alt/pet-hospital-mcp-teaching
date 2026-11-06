@@ -1,0 +1,20 @@
+{
+  "entry": "main.py",
+  "python_path": "../.venv/Scripts/python.exe",
+  "pyinstaller": {
+    "onefile": false,
+    "windowed": false,
+    "add_data": [
+      "core:core",
+      "tui:tui",
+      "config.ini:_internal"
+    ],
+    "clean": true,
+    "noconfirm": true
+  },
+  "pyinstaller_args": [
+    "--collect-all", "openai",
+    "--collect-all", "trafilatura",
+    "--collect-all", "textual"
+  ]
+}

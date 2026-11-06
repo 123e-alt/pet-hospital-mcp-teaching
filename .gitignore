@@ -26,3 +26,15 @@ venv/
 
 # Node（预留）
 node_modules/
+
+# 本地密钥配置（不上传）
+config.ini
+*.local.ini
+.mcp.json
+
+# 运行时日志
+logs/
+
+# Agent 运行时数据（会话存档 / 压缩归档；skills 为用户内容不忽略）
+.agents/sessions/
+.agents/context/

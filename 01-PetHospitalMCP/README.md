@@ -226,12 +226,12 @@ curl -N http://127.0.0.1:8081/sse
 
 ### AnythingLLM 工作区问答 MCP Server（Python · HTTP）
 
-除上述 Go SSE MCP 外，`mcp-anythingllm/` 子目录提供一个**独立的 Python MCP Server**，用 HTTP（Streamable HTTP）传输，把本机 [AnythingLLM](http://localhost:3001/api/docs/) 第一个工作区封装成一个 RAG 问答工具。基于官方 `mcp` Python SDK，协议版本 2026-07-28。
+除上述 Go SSE MCP 外，`../02-AnythingLLMMCP/` 目录提供一个**独立的 Python MCP Server**，用 HTTP（Streamable HTTP）传输，把本机 [AnythingLLM](http://localhost:3001/api/docs/) 第一个工作区封装成一个 RAG 问答工具。基于官方 `mcp` Python SDK，协议版本 2026-07-28。
 
 启动方式：
 
 ```bash
-cd mcp-anythingllm
+cd ../02-AnythingLLMMCP
 pip install -r requirements.txt
 python server.py                       # 监听 http://127.0.0.1:8000/mcp
 ```
@@ -241,7 +241,7 @@ python server.py                       # 监听 http://127.0.0.1:8000/mcp
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `ANYTHINGLLM_BASE_URL` | `http://localhost:3001` | AnythingLLM 服务地址 |
-| `ANYTHINGLLM_API_KEY` | 内置演示 key | API Key（以 `Authorization: Bearer` 发送） |
+| `ANYTHINGLLM_API_KEY` | 无（必填） | API Key（以 `Authorization: Bearer` 发送） |
 | `MCP_HOST` | `127.0.0.1` | MCP 监听地址 |
 | `MCP_PORT` | `8000` | MCP 监听端口 |
 

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>fileOps_arch.mmd — 架构图</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 24px;
+            font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+            background: #fafafa;
+        }
+        h1 { margin-top: 0; font-size: 20px; color: #333; }
+        .source {
+            display: block;
+            font-size: 12px;
+            color: #888;
+            margin-bottom: 16px;
+        }
+        .diagram {
+            background: #fff;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            overflow: auto;
+        }
+    </style>
+    <script>
+        mermaid.initialize({ startOnLoad: true, theme: 'default', flowchart: { htmlLabels: true, curve: 'basis' } });
+    </script>
+</head>
+<body>
+    <h1>chat-stream-tool-fileOps.py 代码架构图</h1>
+    <span class="source">源文件：fileOps_arch.mmd（Mermaid 格式）</span>
+    <div class="diagram" class="mermaid">
+graph TD
+    %% ============ 配置层 ============
+    subgraph CONFIG["配置与初始化"]
+        A1["config.ini<br/>api_key / base_url / model_name"]
+        A2["configparser 读取配置"]
+        A3["OpenAI 客户端初始化"]
+        A1 --> A2 --> A3
+    end
+
+    %% ============ 入口层 ============
+    subgraph ENTRY["程序入口 · 主循环"]
+        B1["system prompt 初始化<br/>（含破坏性操作需 confirm）"]
+        B2["input() 接收用户输入"]
+        B3["messages 追加 user 消息"]
+        B4["client.chat.completions.create<br/>（stream=True + tools）"]
+        B5{"流式响应<br/>是否包含 tool_calls ?"}
+        B6["逐块拼接 content 并实时打印"]
+        B7["按 index 聚合 tool_calls<br/>id / name / arguments"]
+        B8["assistant 消息写入 messages"]
+        B9["输出回复并写入 messages"]
+        B10["KeyboardInterrupt<br/>退出对话"]
+
+        B1 --> B2 --> B3 --> B4 --> B5
+        B5 -- "否" --> B6 --> B9
+        B5 -- "是" --> B7 --> B8
+        B8 --> B11
+        B9 --> B2
+        B10 -.-> B2
+    end
+
+    %% ============ 调度层 ============
+    subgraph DISPATCH["工具调度层"]
+        B11["run_tool(name, arguments)<br/>json.loads 解析参数"]
+        B12["TOOL_FUNCTIONS 工具映射表"]
+        B13["tools 列表<br/>function call JSON Schema"]
+        B14["工具结果转字符串"]
+        B15["tool 角色消息写回 messages<br/>（tool_call_id 对应）"]
+
+        B11 --> B12 --> B13
+        B11 --> B14 --> B15
+        B15 -- "continue 再次请求模型" --> B4
+    end
+
+    %% ============ 辅助层 ============
+    subgraph HELPER["公共辅助函数"]
+        H1["run_command(command)<br/>UTF-8 / GBK 自动解码"]
+        H2["is_text_file(path)<br/>扩展名白/黑名单 + 8KB 探测"]
+        H3["resolve_path(path)<br/>相对路径转绝对路径"]
+        H4["TEXT_EXTENSIONS / NON_TEXT_EXTENSIONS"]
+        H4 --- H2
+    end
+
+    %% ============ 工具层 ============
+    subgraph TOOLS["工具实现层"]
+        subgraph T_BASE["基础工具"]
+            T1["get_date<br/>执行 date /t、time /t"]
+            T2["is_leap_year<br/>闰年判定（4/100/400 规则）"]
+        end
+        subgraph T_QUERY["查询类文件工具"]
+            T3["get_cwd<br/>os.getcwd()"]
+            T4["list_dir<br/>遍历目录，支持 recursive"]
+            T5["get_file_type<br/>扩展名/是否纯文本/大小/时间"]
+            T6["read_file<br/>编码回退 + 100KB 截断"]
+        end
+        subgraph T_WRITE["写入类文件工具"]
+            T7["create_file<br/>mkdir parent + 存在性校验"]
+            T8["edit_file<br/>overwrite / append"]
+            T9["create_dir<br/>parents=True"]
+        end
+        subgraph T_DANGER["破坏性操作（confirm 护栏）"]
+            T10["delete_dir<br/>预览 → shutil.rmtree"]
+            T11["delete_file<br/>预览 → os.remove"]
+            T12["rename<br/>两阶段重命名 + 失败回滚"]
+        end
+    end
+
+    %% ============ 外部依赖 ============
+    subgraph EXT["外部依赖 / 系统能力"]
+        E1["openai SDK"]
+        E2["os / pathlib / shutil"]
+        E3["subprocess"]
+        E4["configparser / json / datetime"]
+        E5["本地文件系统"]
+    end
+
+    %% ============ 连线 ============
+    A3 --> B4
+    B12 --> T1 & T2 & T3 & T4 & T5 & T6 & T7 & T8 & T9 & T10 & T11 & T12
+
+    H1 --> T1
+    H2 --> T5 & T6 & T8
+    H3 --> T4 & T5 & T6 & T7 & T8 & T9 & T10 & T11 & T12
+
+    T1 --> H1
+    T3 --> E2
+    T4 --> E2
+    T5 --> E2
+    T6 --> E5
+    T7 --> E5
+    T8 --> E5
+    T9 --> E2
+    T10 --> E2
+    T11 --> E2
+    T12 --> E2
+    T1 --> E3
+    T12 --> E5
+
+    A3 --- E1
+    B1 --- E4
+
+    %% ============ 样式 ============
+    classDef cfg fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    classDef entry fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    classDef dispatch fill:#fff8e1,stroke:#f9a825,color:#e65100
+    classDef helper fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c
+    classDef tool fill:#e0f7fa,stroke:#00838f,color:#006064
+    classDef danger fill:#ffebee,stroke:#c62828,color:#b71c1c
+    classDef ext fill:#eceff1,stroke:#455a64,color:#263238
+
+    class A1,A2,A3 cfg
+    class B1,B2,B3,B4,B5,B6,B7,B8,B9,B10 entry
+    class B11,B12,B13,B14,B15 dispatch
+    class H1,H2,H3,H4 helper
+    class T1,T2,T3,T4,T5,T6,T7,T8,T9 tool
+    class T10,T11,T12 danger
+    class E1,E2,E3,E4,E5 ext
+    </div>
+</body>
+</html>

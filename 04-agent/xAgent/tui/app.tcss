@@ -1,0 +1,94 @@
+Screen {
+    layout: vertical;
+    background: $surface;
+}
+
+#main {
+    height: 1fr;
+}
+
+#chat-container {
+    width: 1fr;
+    height: 100%;
+    border: round $primary;
+    background: $surface;
+}
+
+#chat {
+    padding: 1 2;
+}
+
+.message {
+    width: 100%;
+    margin-bottom: 1;
+}
+
+.message.system {
+    color: $text-muted;
+}
+
+.message.user {
+    color: $accent;
+}
+
+.message.assistant {
+    color: $text;
+}
+
+.message.tool-call {
+    color: $warning;
+    padding-left: 2;
+}
+
+.message.tool-result {
+    color: $text-muted;
+    padding-left: 4;
+}
+
+.message.tool-error {
+    color: $error;
+    padding-left: 4;
+}
+
+.message.error {
+    color: $error;
+}
+
+/* ---------- 右侧边栏：MCP 服务器与工具 ---------- */
+
+#sidebar {
+    width: 30;
+    min-width: 24;
+    padding: 1 1;
+    background: $panel;
+    border-left: round $primary;
+}
+
+#sidebar-body {
+    width: 100%;
+}
+
+/* ---------- 斜杠命令 / 会话选择面板 ---------- */
+
+#slash-panel {
+    height: auto;
+    max-height: 10;
+    margin: 0 1;
+    border: round $accent;
+    background: $surface;
+    scrollbar-size: 0 0;
+}
+
+#status {
+    height: 1;
+    padding: 0 2;
+    color: $text-muted;
+    background: $panel;
+}
+
+#prompt {
+    margin: 0 1 1 1;
+    height: 4;
+    border: round $primary;
+    padding: 0 1;
+}
