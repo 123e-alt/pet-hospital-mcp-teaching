@@ -1,283 +1,56 @@
 <!DOCTYPE html>
-<!--
-  AnythingLLM Web 控制台
-  - 直接调用 AnythingLLM /api/v1/* REST API
-  - API Key 仅在运行时用密码框输入，保存在内存（可选 sessionStorage），源码中零硬编码
-  - 所有接口返回内容一律经 textContent 渲染，杜绝 XSS
--->
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AnythingLLM 控制台</title>
-<style>
-  :root { --bg:#f5f6f8; --card:#fff; --line:#e3e5e8; --text:#222; --muted:#777;
-          --primary:#2563eb; --ok:#16a34a; --err:#dc2626; --warn:#d97706; }
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:"Segoe UI","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); }
-  header { background:var(--card); border-bottom:1px solid var(--line); padding:12px 20px;
-           display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-  header h1 { font-size:17px; margin-right:auto; }
-  header input { padding:7px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px; }
-  header input#base-url { width:210px; }
-  header input#api-key { width:230px; }
-  button { padding:7px 14px; border:none; border-radius:6px; background:var(--primary);
-           color:#fff; font-size:13px; cursor:pointer; }
-  button:disabled { opacity:.5; cursor:not-allowed; }
-  button.ghost { background:#e5e7eb; color:var(--text); }
-  #conn-status { font-size:12px; }
-
-  main { display:grid; grid-template-columns:300px 1fr; gap:14px; padding:14px 20px;
-         max-width:1200px; margin:0 auto; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
-  .card h2 { font-size:14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; }
-  .card h2 .mini { font-size:11px; color:var(--muted); font-weight:normal; }
-
-  #ws-list { list-style:none; max-height:210px; overflow:auto; }
-  #ws-list li { padding:8px 10px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:4px;
-                border:1px solid var(--line); }
-  #ws-list li.active { border-color:var(--primary); background:#eff4ff; }
-  #ws-list li:hover { background:#f3f4f6; }
-
-  #doc-list { list-style:none; max-height:150px; overflow:auto; font-size:12px; color:var(--muted); }
-  #doc-list li { padding:4px 0; border-bottom:1px dashed var(--line); word-break:break-all; }
-
-  #drop-zone { margin-top:10px; border:1.5px dashed var(--line); border-radius:8px; padding:14px;
-               text-align:center; font-size:12px; color:var(--muted); }
-  #up-status, #conn-hint { margin-top:8px; font-size:12px; min-height:16px; }
-
-  #chat-box { display:flex; flex-direction:column; height:560px; }
-  #messages { flex:1; overflow:auto; display:flex; flex-direction:column; gap:8px; padding:4px 2px; }
-  .msg { max-width:82%; padding:9px 12px; border-radius:10px; font-size:13px; line-height:1.55;
-         white-space:pre-wrap; word-break:break-word; }
-  .msg.user { align-self:flex-end; background:var(--primary); color:#fff; }
-  .msg.bot  { align-self:flex-start; background:#eef0f3; }
-  .msg .src { display:block; margin-top:6px; font-size:11px; color:var(--muted); }
-  .msg.sys  { align-self:center; background:transparent; color:var(--muted); font-size:12px; }
-  #chat-status { font-size:12px; min-height:16px; margin:6px 0; }
-  #ask-row { display:flex; gap:8px; }
-  #question { flex:1; padding:9px 12px; border:1px solid var(--line); border-radius:8px;
-              font-size:13px; resize:none; font-family:inherit; }
-
-  .st-loading { color:var(--warn); }
-  .st-ok { color:var(--ok); }
-  .st-err { color:var(--err); }
-
-  /* 移动端：单列布局、输入框全宽、聊窗降高 */
-  @media (max-width:760px) {
-    main { grid-template-columns:1fr; padding:10px; }
-    header { padding:10px; }
-    header input#base-url, header input#api-key { width:100%; }
-    #chat-box { height:420px; }
-    .msg { max-width:92%; }
-  }
-</style>
+<!--
+  AnythingLLM Web 控制台（纯前端，无构建步骤）
+  结构拆分：index.html（结构）/ styles.css（样式）/ app.js（逻辑）
+  安全：API Key 仅在页面运行时输入、保存在内存（可选 sessionStorage），
+        绝不写入任何文件；所有接口返回内容一律经 textContent 渲染（防 XSS）。
+-->
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
 <header>
   <h1>AnythingLLM 控制台</h1>
-  <input id="base-url" type="text" value="http://localhost:3001" placeholder="服务地址" aria-label="AnythingLLM 服务地址">
-  <input id="api-key" type="password" placeholder="API Key（仅存本页内存）" aria-label="API Key" autocomplete="off">
-  <label style="font-size:12px;color:var(--muted)"><input type="checkbox" id="remember"> 本会话记住</label>
-  <button id="connect-btn">连接</button>
+  <input id="base-url" type="text" placeholder="服务地址 http://localhost:3001">
+  <input id="api-key" type="password" placeholder="API Key（运行时输入，不保存到代码）" autocomplete="off">
+  <button id="btn-connect">连接</button>
   <span id="conn-status"></span>
 </header>
 
 <main>
-  <section class="card">
-    <h2>工作区 <span class="mini" id="ws-count"></span></h2>
+  <section class="card" id="ws-card">
+    <h2>工作区 <span class="mini">点击切换</span></h2>
     <ul id="ws-list"></ul>
-    <div id="drop-zone">
-      <input type="file" id="file-input" hidden>
-      <button class="ghost" id="pick-file" type="button">选择文档</button>
-      <span id="file-name"></span>
-      <div id="up-status"></div>
-    </div>
-    <h2 style="margin-top:14px">当前工作区文档 <span class="mini" id="doc-count"></span></h2>
+    <div id="conn-hint"></div>
+  </section>
+
+  <section class="card" id="doc-card">
+    <h2>文档 <span class="mini" id="ws-current">未选择工作区</span></h2>
     <ul id="doc-list"></ul>
+    <div id="drop-zone">
+      <input type="file" id="file-input">
+      <button id="btn-upload">上传并向量化</button>
+    </div>
+    <div id="up-status"></div>
+    <div id="doc-status"></div>
   </section>
 
   <section class="card" id="chat-box">
-    <h2>问答 <span class="mini" id="chat-target"></span></h2>
+    <h2>问答</h2>
     <div id="messages"></div>
     <div id="chat-status"></div>
     <div id="ask-row">
-      <textarea id="question" rows="2" placeholder="向当前工作区提问…（Enter 发送，Shift+Enter 换行）"></textarea>
-      <button id="ask-btn">发送</button>
+      <textarea id="question" rows="2" placeholder="输入问题，Enter 发送（Shift+Enter 换行）"></textarea>
+      <button id="btn-ask">发送</button>
     </div>
   </section>
 </main>
 
-<script>
-"use strict";
-/* ================= 配置与状态 ================= */
-const $ = (id) => document.getElementById(id);
-const els = {
-  baseUrl: $("base-url"), apiKey: $("api-key"), remember: $("remember"),
-  connectBtn: $("connect-btn"), connStatus: $("conn-status"),
-  wsList: $("ws-list"), wsCount: $("ws-count"),
-  fileInput: $("file-input"), pickFile: $("pick-file"), fileName: $("file-name"), upStatus: $("up-status"),
-  docList: $("doc-list"), docCount: $("doc-count"),
-  messages: $("messages"), chatStatus: $("chat-status"), chatTarget: $("chat-target"),
-  question: $("question"), askBtn: $("ask-btn"),
-};
-
-// 密钥只存内存变量；勾选「本会话记住」时放 sessionStorage（关标签页即清），绝不写 localStorage
-let apiKey = sessionStorage.getItem("allm_key") || "";
-let currentSlug = "";
-if (apiKey) { els.apiKey.value = apiKey; els.remember.checked = true; }
-
-/* ================= 通用渲染（防 XSS：一律 textContent） ================= */
-function setStatus(el, kind, text) {
-  el.className = kind ? "st-" + kind : "";
-  el.textContent = text || "";
-}
-function addMsg(role, text, sources) {
-  const div = document.createElement("div");
-  div.className = "msg " + role;
-  div.textContent = text;
-  if (sources && sources.length) {
-    const s = document.createElement("span");
-    s.className = "src";
-    s.textContent = "来源：" + sources.join("、");
-    div.appendChild(s);
-  }
-  els.messages.appendChild(div);
-  els.messages.scrollTop = els.messages.scrollHeight;
-}
-
-/* ================= AnythingLLM API 封装 ================= */
-function api(path, { method = "GET", json, form } = {}) {
-  const base = els.baseUrl.value.trim().replace(/\/+$/, "");
-  const opts = { method, headers: { "Authorization": "Bearer " + apiKey } };
-  if (json) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(json); }
-  if (form) { opts.body = form; }
-  return fetch(base + "/api/v1" + path, opts).then(async (r) => {
-    if (r.status === 401) throw new Error("鉴权失败（401）：API Key 无效");
-    if (r.status === 403) throw new Error("没有权限（403）");
-    if (!r.ok) throw new Error("HTTP " + r.status + "：" + (await r.text()).slice(0, 200));
-    return r.json();
-  });
-}
-const errText = (e) =>
-  e instanceof TypeError ? "无法连接 AnythingLLM：请确认服务已启动且地址正确（CORS 限制见 README）" : e.message;
-
-/* ================= 工作区 ================= */
-function loadWorkspaces() {
-  setStatus(els.connStatus, "loading", "加载工作区…");
-  return api("/workspaces").then((data) => {
-    const list = data.workspaces || [];
-    els.wsList.textContent = "";
-    els.wsCount.textContent = list.length + " 个";
-    list.forEach((w) => {
-      const li = document.createElement("li");
-      li.textContent = w.name;
-      li.dataset.slug = w.slug;
-      if (w.slug === currentSlug) li.classList.add("active");
-      li.addEventListener("click", () => switchWorkspace(w.slug, w.name));
-      els.wsList.appendChild(li);
-    });
-    if (!list.length) {
-      setStatus(els.connStatus, "err", "没有任何工作区，请先在 AnythingLLM 中创建");
-    } else {
-      setStatus(els.connStatus, "ok", "已连接");
-      if (!currentSlug) switchWorkspace(list[0].slug, list[0].name);
-    }
-  }).catch((e) => setStatus(els.connStatus, "err", errText(e)));
-}
-
-function switchWorkspace(slug, name) {
-  currentSlug = slug;
-  els.chatTarget.textContent = "当前：" + name;
-  [...els.wsList.children].forEach((li) => li.classList.toggle("active", li.dataset.slug === slug));
-  addMsg("sys", "已切换到工作区「" + name + "」");
-  loadDocuments();
-}
-
-/* ================= 文档：上传 + 向量化 ================= */
-function loadDocuments() {
-  if (!currentSlug) return;
-  els.docList.textContent = "";
-  els.docCount.textContent = "加载中…";
-  // 工作区详情内含已向量化的文档列表（数据来自接口，非写死）
-  api("/workspace/" + currentSlug).then((data) => {
-    const docs = (data.workspace && data.workspace[0] && data.workspace[0].documents) || [];
-    els.docCount.textContent = docs.length + " 篇";
-    els.docList.textContent = "";
-    docs.forEach((d) => {
-      const li = document.createElement("li");
-      li.textContent = d.filename || d.docpath || "未命名";
-      els.docList.appendChild(li);
-    });
-  }).catch(() => { els.docCount.textContent = "加载失败"; });
-}
-
-els.pickFile.addEventListener("click", () => {
-  if (!apiKey) { setStatus(els.upStatus, "err", "请先连接"); return; }
-  els.fileInput.click();
-});
-els.fileInput.addEventListener("change", () => {
-  const f = els.fileInput.files[0];
-  if (!f) return;
-  els.fileName.textContent = " " + f.name;
-  uploadAndEmbed(f);
-});
-
-function uploadAndEmbed(file) {
-  if (!currentSlug) { setStatus(els.upStatus, "err", "请先连接并选择工作区"); return; }
-  setStatus(els.upStatus, "loading", "上传中…");
-  const form = new FormData();
-  form.append("file", file, file.name);
-  api("/document/upload", { method: "POST", form }).then((data) => {
-    const docs = data.documents || [];
-    if (!docs.length) throw new Error("上传响应中没有文档信息");
-    const loc = docs[0].location;
-    setStatus(els.upStatus, "loading", "已上传，向量化中…");
-    return api("/workspace/" + currentSlug + "/update-embeddings",
-               { method: "POST", json: { adds: [loc], deletes: [] } });
-  }).then(() => {
-    setStatus(els.upStatus, "ok", "「" + file.name + "」已上传并向量化");
-    loadDocuments();
-  }).catch((e) => setStatus(els.upStatus, "err", errText(e)));
-}
-
-/* ================= 问答 ================= */
-function ask() {
-  const q = els.question.value.trim();
-  if (!q) return;
-  if (!apiKey) { setStatus(els.chatStatus, "err", "请先连接"); return; }
-  if (!currentSlug) { setStatus(els.chatStatus, "err", "请先选择工作区"); return; }
-  addMsg("user", q);
-  els.question.value = "";
-  els.askBtn.disabled = true;
-  setStatus(els.chatStatus, "loading", "思考中…");
-  api("/workspace/" + currentSlug + "/chat",
-      { method: "POST", json: { message: q, mode: "chat" } }).then((data) => {
-    const text = (data.textResponse || "").trim() || "（空回答）";
-    const sources = [...new Set((data.sources || []).map((s) => s.title).filter(Boolean))];
-    addMsg("bot", text, sources);
-    setStatus(els.chatStatus, "ok", "");
-  }).catch((e) => {
-    addMsg("sys", "提问失败：" + errText(e));
-    setStatus(els.chatStatus, "err", "失败");
-  }).finally(() => { els.askBtn.disabled = false; els.question.focus(); });
-}
-
-els.askBtn.addEventListener("click", ask);
-els.question.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); }
-});
-
-/* ================= 连接 ================= */
-els.connectBtn.addEventListener("click", () => {
-  apiKey = els.apiKey.value.trim();
-  if (!apiKey) { setStatus(els.connStatus, "err", "请输入 API Key"); return; }
-  if (els.remember.checked) sessionStorage.setItem("allm_key", apiKey);
-  else sessionStorage.removeItem("allm_key");
-  currentSlug = "";
-  loadWorkspaces();
-});
-</script>
+<script src="app.js"></script>
 </body>
 </html>

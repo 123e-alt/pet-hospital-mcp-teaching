@@ -82,7 +82,7 @@ func createPetHandler(db *store.Store) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		var p model.Pet
 		if err := UnmarshalArgs(req, &p); err != nil {
-			return mcp.NewToolResultError("参数解析失败: " + err.Error()), nil
+			return FailValidation("参数解析失败: " + err.Error()), nil
 		}
 		p.ID = "" // 不允许客户端指定主键
 		created, err := db.Create(&p)
@@ -101,7 +101,7 @@ func getPetHandler(db *store.Store) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id := GetString(req, "id", "")
 		if id == "" {
-			return mcp.NewToolResultError("id 不能为空"), nil
+			return FailValidation("id 不能为空"), nil
 		}
 		p, err := db.Get(id)
 		if err != nil {
@@ -115,11 +115,11 @@ func updatePetHandler(db *store.Store) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id := GetString(req, "id", "")
 		if id == "" {
-			return mcp.NewToolResultError("id 不能为空"), nil
+			return FailValidation("id 不能为空"), nil
 		}
 		var p model.Pet
 		if err := UnmarshalArgs(req, &p); err != nil {
-			return mcp.NewToolResultError("参数解析失败: " + err.Error()), nil
+			return FailValidation("参数解析失败: " + err.Error()), nil
 		}
 		updated, err := db.Update(id, &p)
 		if err != nil {
@@ -133,7 +133,7 @@ func patchPetHandler(db *store.Store) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id := GetString(req, "id", "")
 		if id == "" {
-			return mcp.NewToolResultError("id 不能为空"), nil
+			return FailValidation("id 不能为空"), nil
 		}
 		// 把所有传入字段都记为待 patch
 		args := arguments(req)
@@ -146,7 +146,7 @@ func patchPetHandler(db *store.Store) Handler {
 		}
 		var p model.Pet
 		if err := UnmarshalArgs(req, &p); err != nil {
-			return mcp.NewToolResultError("参数解析失败: " + err.Error()), nil
+			return FailValidation("参数解析失败: " + err.Error()), nil
 		}
 		updated, err := db.Patch(id, &p, fields)
 		if err != nil {
@@ -160,7 +160,7 @@ func deletePetHandler(db *store.Store) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id := GetString(req, "id", "")
 		if id == "" {
-			return mcp.NewToolResultError("id 不能为空"), nil
+			return FailValidation("id 不能为空"), nil
 		}
 		if err := db.Delete(id); err != nil {
 			return ErrResult(err), nil
@@ -230,7 +230,7 @@ func listMedicalRecordsHandler(db *store.Store) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id := GetString(req, "id", "")
 		if id == "" {
-			return mcp.NewToolResultError("id 不能为空"), nil
+			return FailValidation("id 不能为空"), nil
 		}
 		p, err := db.Get(id)
 		if err != nil {
@@ -255,7 +255,7 @@ func addMedicalRecordHandler(db *store.Store) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id := GetString(req, "id", "")
 		if id == "" {
-			return mcp.NewToolResultError("id 不能为空"), nil
+			return FailValidation("id 不能为空"), nil
 		}
 		var rec model.MedicalRecord
 		if err := UnmarshalArgs(req, &rec); err != nil {
@@ -285,7 +285,7 @@ func listChargesHandler(db *store.Store) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id := GetString(req, "id", "")
 		if id == "" {
-			return mcp.NewToolResultError("id 不能为空"), nil
+			return FailValidation("id 不能为空"), nil
 		}
 		p, err := db.Get(id)
 		if err != nil {
@@ -314,7 +314,7 @@ func addChargeHandler(db *store.Store) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id := GetString(req, "id", "")
 		if id == "" {
-			return mcp.NewToolResultError("id 不能为空"), nil
+			return FailValidation("id 不能为空"), nil
 		}
 		var c model.Treatment
 		if err := UnmarshalArgs(req, &c); err != nil {
@@ -343,7 +343,7 @@ func getPetSummaryHandler(db *store.Store) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		id := GetString(req, "id", "")
 		if id == "" {
-			return mcp.NewToolResultError("id 不能为空"), nil
+			return FailValidation("id 不能为空"), nil
 		}
 		p, err := db.Get(id)
 		if err != nil {
@@ -403,15 +403,15 @@ func batchCreatePetsHandler(db *store.Store) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		raw, ok := arguments(req)["items"].([]any)
 		if !ok || len(raw) == 0 {
-			return mcp.NewToolResultError("items 必须为非空数组"), nil
+			return FailValidation("items 必须为非空数组"), nil
 		}
 		buf, err := json.Marshal(raw)
 		if err != nil {
-			return mcp.NewToolResultError("items 序列化失败: " + err.Error()), nil
+			return FailValidation("items 序列化失败: " + err.Error()), nil
 		}
 		var items []*model.Pet
 		if err := json.Unmarshal(buf, &items); err != nil {
-			return mcp.NewToolResultError("items 解析失败: " + err.Error()), nil
+			return FailValidation("items 解析失败: " + err.Error()), nil
 		}
 		created, errs := db.CreateMany(items)
 		msgs := make([]string, 0, len(errs))
@@ -432,7 +432,7 @@ func batchDeletePetsHandler(db *store.Store) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		raw, ok := arguments(req)["ids"].([]any)
 		if !ok || len(raw) == 0 {
-			return mcp.NewToolResultError("ids 必须为非空数组"), nil
+			return FailValidation("ids 必须为非空数组"), nil
 		}
 		ids := make([]string, 0, len(raw))
 		for _, item := range raw {
@@ -441,7 +441,7 @@ func batchDeletePetsHandler(db *store.Store) Handler {
 			}
 		}
 		if len(ids) == 0 {
-			return mcp.NewToolResultError("ids 中没有有效字符串"), nil
+			return FailValidation("ids 中没有有效字符串"), nil
 		}
 		deleted, err := db.DeleteMany(ids)
 		if err != nil {
@@ -512,7 +512,7 @@ func seedDemoDataHandler(db *store.Store) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		force := GetBool(req, "force", false)
 		if db.Count() > 0 && !force {
-			return mcp.NewToolResultError(fmt.Sprintf(
+			return FailValidation(fmt.Sprintf(
 				"数据库已有 %d 条记录；如需强制写入演示数据请把 force 设为 true", db.Count())), nil
 		}
 		generated := 0
@@ -524,7 +524,7 @@ func seedDemoDataHandler(db *store.Store) Handler {
 		default:
 			n, err := strconv.Atoi(v)
 			if err != nil || n < 0 || n > 50000 {
-				return mcp.NewToolResultError(
+				return FailValidation(
 					fmt.Sprintf("count 需为 0-50000 的整数或 all，收到 %q", v)), nil
 			}
 			generated = n

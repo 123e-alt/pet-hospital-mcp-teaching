@@ -1,6 +1,16 @@
 # AnythingLLM Web 控制台
 
-纯前端单页（`index.html`，零依赖、零构建），直接调用 AnythingLLM `/api/v1/*` REST API，完成「工作区切换 → 文档上传并向量化 → 提问并展示回答」完整闭环。
+纯前端（零依赖、零构建），直接调用 AnythingLLM `/api/v1/*` REST API，完成「工作区切换 → 文档上传并向量化 → 提问并展示回答」完整闭环。
+
+## 文件结构（C3）
+
+| 文件 | 职责 |
+| --- | --- |
+| `index.html` | 页面结构（header 连接区 + 工作区/文档/问答三卡片） |
+| `styles.css` | 全部样式（设计变量、卡片布局、760px 移动端媒体查询） |
+| `app.js` | 全部逻辑（配置 → API 封装 → 工作区/上传/问答四个功能域，注释分节） |
+
+HTML/CSS/JS 三分离，无内联样式与脚本。
 
 AnythingLLM 本体安装见 [../03-AnythingLLMServer/README.md](../03-AnythingLLMServer/README.md)。
 
@@ -25,27 +35,27 @@ python -m http.server 8080
 
 ## 功能与 API 对照
 
-| 页面功能 | 端点 | 方法 / 请求体 |
+| 页面元素（UI 原文） | 端点 | 方法 / 请求体 |
 | --- | --- | --- |
-| 连接并列出工作区 | `/api/v1/workspaces` | GET，头 `Authorization: Bearer <key>` |
-| 切换工作区 | `/api/v1/workspace/{slug}` | GET（读取该工作区已向量化文档列表） |
-| 上传文档 | `/api/v1/document/upload` | POST，multipart 字段 `file` |
-| 向量化到工作区 | `/api/v1/workspace/{slug}/update-embeddings` | POST，`{"adds":[location],"deletes":[]}` |
-| 提问 | `/api/v1/workspace/{slug}/chat` | POST，`{"message": q, "mode":"chat"}` |
+| 「连接」按钮（连接后自动填充工作区列表） | `/api/v1/workspaces` | GET，头 `Authorization: Bearer <key>` |
+| 工作区列表项（「点击切换」选中工作区并加载文档列表） | `/api/v1/workspace/{slug}` | GET（读取该工作区已向量化文档列表） |
+| 「上传并向量化」按钮 · 第一步 上传 | `/api/v1/document/upload` | POST，multipart 字段 `file` |
+| 「上传并向量化」按钮 · 第二步 向量化 | `/api/v1/workspace/{slug}/update-embeddings` | POST，`{"adds":[location],"deletes":[]}` |
+| 问答输入框 + 「发送」按钮 | `/api/v1/workspace/{slug}/chat` | POST，`{"message": q, "mode":"chat"}` |
 
 工作区列表、文档列表、回答与来源全部来自接口返回，无任何写死数据。
 
 ## 三态设计
 
-每个异步操作都有 **加载 / 成功 / 失败** 三态：
+每个异步操作都有 **加载 / 成功 / 失败** 三态（状态文字与 UI 原文一致）：
 
-- 加载：连接时「加载工作区…」、提问时「思考中…」、上传时「上传中… → 向量化中…」
-- 成功：绿色状态文字（「已连接」「已上传并向量化」），回答以气泡展示并附来源文档
-- 失败：红色具体原因（401 鉴权失败 / 无法连接 / HTTP 状态码 + 服务端摘要）
+- 加载：`连接中…`、`上传中… <文件名>`、`已上传，向量化中…`、`加载文档…`、`思考中…`
+- 成功：`已连接（N 个工作区）`、`已向量化：<文件名>`、`工作区文档 N 个`，回答以气泡展示并附来源文档
+- 失败：红色具体原因，如 `连接失败：HTTP 401…`、`加载失败：…`、`失败：…`（含 HTTP 状态码与服务端摘要）
 
 ## 安全说明（C4）
 
-- **密钥零硬编码**：源码中没有任何 Key；运行时由用户在密码框输入，只存内存变量，勾选「本会话记住」时放 `sessionStorage`（关标签页即清），绝不写 `localStorage`。
+- **密钥零硬编码**：源码中没有任何 Key；运行时由用户在密码框输入，保存于模块作用域变量，连接成功后写入 `sessionStorage`（关标签页即清）用于刷新免重输；Key 绝不写入 `localStorage`（`localStorage` 仅存不含密钥的服务地址）。
 - **防 XSS**：所有接口返回内容（工作区名、文档名、回答、来源标题）一律经 `textContent` 写入 DOM，不使用 `innerHTML` 拼接，模型回答里的 `<script>` 等只会作为纯文本显示。
 
 ## 失败场景

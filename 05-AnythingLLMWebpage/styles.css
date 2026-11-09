@@ -1,0 +1,61 @@
+/* AnythingLLM 控制台样式（含 760px 移动端媒体查询） */
+:root { --bg:#f5f6f8; --card:#fff; --line:#e3e5e8; --text:#222; --muted:#777;
+        --primary:#2563eb; --ok:#16a34a; --err:#dc2626; --warn:#d97706; }
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:"Segoe UI","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); }
+header { background:var(--card); border-bottom:1px solid var(--line); padding:12px 20px;
+         display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+header h1 { font-size:17px; margin-right:auto; }
+header input { padding:7px 10px; border:1px solid var(--line); border-radius:6px; font-size:13px; }
+header input#base-url { width:210px; }
+header input#api-key { width:230px; }
+button { padding:7px 14px; border:none; border-radius:6px; background:var(--primary);
+         color:#fff; font-size:13px; cursor:pointer; }
+button:disabled { opacity:.5; cursor:not-allowed; }
+button.ghost { background:#e5e7eb; color:var(--text); }
+#conn-status { font-size:12px; }
+
+main { display:grid; grid-template-columns:300px 1fr; gap:14px; padding:14px 20px;
+       max-width:1200px; margin:0 auto; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; }
+.card h2 { font-size:14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; }
+.card h2 .mini { font-size:11px; color:var(--muted); font-weight:normal; }
+
+#ws-list { list-style:none; max-height:210px; overflow:auto; }
+#ws-list li { padding:8px 10px; border-radius:6px; cursor:pointer; font-size:13px; margin-bottom:4px;
+              border:1px solid var(--line); }
+#ws-list li.active { border-color:var(--primary); background:#eff4ff; }
+#ws-list li:hover { background:#f3f4f6; }
+
+#doc-list { list-style:none; max-height:150px; overflow:auto; font-size:12px; color:var(--muted); }
+#doc-list li { padding:4px 0; border-bottom:1px dashed var(--line); word-break:break-all; }
+
+#drop-zone { margin-top:10px; border:1.5px dashed var(--line); border-radius:8px; padding:14px;
+             text-align:center; font-size:12px; color:var(--muted); }
+#up-status, #conn-hint { margin-top:8px; font-size:12px; min-height:16px; }
+
+#chat-box { display:flex; flex-direction:column; height:560px; }
+#messages { flex:1; overflow:auto; display:flex; flex-direction:column; gap:8px; padding:4px 2px; }
+.msg { max-width:82%; padding:9px 12px; border-radius:10px; font-size:13px; line-height:1.55;
+       white-space:pre-wrap; word-break:break-word; }
+.msg.user { align-self:flex-end; background:var(--primary); color:#fff; }
+.msg.bot  { align-self:flex-start; background:#eef0f3; }
+.msg .src { display:block; margin-top:6px; font-size:11px; color:var(--muted); }
+.msg.sys  { align-self:center; background:transparent; color:var(--muted); font-size:12px; }
+#chat-status { font-size:12px; min-height:16px; margin:6px 0; }
+#ask-row { display:flex; gap:8px; }
+#question { flex:1; padding:9px 12px; border:1px solid var(--line); border-radius:8px;
+            font-size:13px; resize:none; font-family:inherit; }
+
+.st-loading { color:var(--warn); }
+.st-ok { color:var(--ok); }
+.st-err { color:var(--err); }
+
+/* 移动端：单列布局、输入框全宽、聊窗降高 */
+@media (max-width:760px) {
+  main { grid-template-columns:1fr; padding:10px; }
+  header { padding:10px; }
+  header input#base-url, header input#api-key { width:100%; }
+  #chat-box { height:420px; }
+  .msg { max-width:92%; }
+}

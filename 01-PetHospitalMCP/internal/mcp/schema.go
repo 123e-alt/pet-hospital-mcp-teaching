@@ -174,6 +174,12 @@ func errorJSON(code, msg string) *mcp.CallToolResult {
 	return mcp.NewToolResultError(string(buf))
 }
 
+// FailValidation 构造参数校验失败的结构化错误结果（handlers 统一入口，
+// 禁止直接 mcp.NewToolResultError 返回纯文本，保证错误码证据完整）。
+func FailValidation(msg string) *mcp.CallToolResult {
+	return errorJSON(ErrCodeValidation, msg)
+}
+
 // ErrResult 把业务错误转成结构化 MCP 错误结果（不让 SDK 当协议错误）。
 // 分类规则：store 哨兵错误 → NOT_FOUND/DUPLICATE；
 // 含参数校验特征文案 → VALIDATION_FAILED；其余 → INTERNAL_ERROR。
@@ -210,29 +216,60 @@ func isValidationMsg(msg string) bool {
 // callLog 是 MCP tool 的调用日志器（替代 fmt.Print，满足工程日志要求）。
 var callLog = log.New(os.Stderr, "", log.LstdFlags)
 
-// WithCallGuard 包装 handler：调用超时（超时返回 TIMEOUT 结构化错误）+
-// 每次调用输出一条带耗时的日志（tool/result/duration）。
+const (
+	// toolCallRetries 超时后的最大重试次数。仅对 TIMEOUT 重试：
+	// 业务校验/存储错误重试无意义，写操作也不会因超时重试产生可见副作用
+	//（store 层对重复创建返回 DUPLICATE，对不存在记录返回 NOT_FOUND）。
+	toolCallRetries = 1
+	// toolRetryBackoff 重试前的固定退避时间。
+	toolRetryBackoff = 200 * time.Millisecond
+)
+
+// WithCallGuard 包装 handler：调用超时（TIMEOUT 结构化错误）+ 超时重试
+//（固定退避，最多 toolCallRetries 次）+ 每次调用输出带耗时的日志。
 func WithCallGuard(h Handler, timeout time.Duration) Handler {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		ctx, cancel := context.WithTimeout(ctx, timeout)
-		defer cancel()
-		start := time.Now()
-		res, err := h(ctx, req)
-		dur := time.Since(start).Milliseconds()
-		switch {
-		case errors.Is(ctx.Err(), context.DeadlineExceeded):
-			callLog.Printf("tool=%s result=timeout dur=%dms", req.Params.Name, dur)
-			return errorJSON(ErrCodeTimeout,
-				fmt.Sprintf("调用超时（超过 %s），请缩小查询范围后重试", timeout)), nil
-		case err != nil:
-			callLog.Printf("tool=%s result=panic_error dur=%dms err=%q", req.Params.Name, dur, err)
-		case res != nil && res.IsError:
-			callLog.Printf("tool=%s result=biz_error dur=%dms", req.Params.Name, dur)
-		default:
-			callLog.Printf("tool=%s result=ok dur=%dms", req.Params.Name, dur)
+		for attempt := 0; ; attempt++ {
+			if attempt > 0 {
+				callLog.Printf("tool=%s retry=%d/%d reason=timeout backoff=%s",
+					req.Params.Name, attempt, toolCallRetries, toolRetryBackoff)
+				timer := time.NewTimer(toolRetryBackoff)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+				case <-timer.C:
+				}
+			}
+			res, err, timedOut := attemptCall(ctx, h, timeout, req)
+			if !timedOut || attempt >= toolCallRetries {
+				return res, err
+			}
 		}
-		return res, err
 	}
+}
+
+// attemptCall 执行单次带超时的调用并记录日志；timedOut 表示本次因超时失败。
+func attemptCall(
+	ctx context.Context, h Handler, timeout time.Duration, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error, bool) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	start := time.Now()
+	res, err := h(ctx, req)
+	dur := time.Since(start).Milliseconds()
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		callLog.Printf("tool=%s result=timeout dur=%dms", req.Params.Name, dur)
+		return errorJSON(ErrCodeTimeout,
+			fmt.Sprintf("调用超时（超过 %s），请缩小查询范围后重试", timeout)), nil, true
+	case err != nil:
+		callLog.Printf("tool=%s result=panic_error dur=%dms err=%q", req.Params.Name, dur, err)
+	case res != nil && res.IsError:
+		callLog.Printf("tool=%s result=biz_error dur=%dms", req.Params.Name, dur)
+	default:
+		callLog.Printf("tool=%s result=ok dur=%dms", req.Params.Name, dur)
+	}
+	return res, err, false
 }
 
 // ---------------------------------------------------------------------------

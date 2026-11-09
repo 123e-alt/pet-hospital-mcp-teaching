@@ -85,6 +85,35 @@ func TestWithCallGuardTimeout(t *testing.T) {
 	}
 }
 
+func TestWithCallGuardRetryOnTimeout(t *testing.T) {
+	calls := 0
+	flaky := Handler(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		calls++
+		if calls == 1 {
+			// 第一次调用故意超过 20ms 超时
+			select {
+			case <-time.After(200 * time.Millisecond):
+				return mcp.NewToolResultText("late"), nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		return mcp.NewToolResultText("ok"), nil
+	})
+	req := mcp.CallToolRequest{}
+	req.Params.Name = "flaky_tool"
+	res, err := WithCallGuard(flaky, 20*time.Millisecond)(context.Background(), req)
+	if err != nil {
+		t.Fatalf("重试后不应返回 Go error: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("应重试 1 次（共调用 2 次），实际 %d 次", calls)
+	}
+	if res.IsError || resultText(t, res) != "ok" {
+		t.Fatalf("重试后应返回第二次的成功结果: %v", resultText(t, res))
+	}
+}
+
 func TestWithCallGuardPassThrough(t *testing.T) {
 	ok := Handler(func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return mcp.NewToolResultText("ok"), nil
