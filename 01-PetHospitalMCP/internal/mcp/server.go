@@ -99,7 +99,8 @@ func NewServer(db *store.Store, opts ServerOptions) (*server.MCPServer, error) {
 		if !ok {
 			return nil, fmt.Errorf("未找到 tool %s 对应的 handler", t.Name)
 		}
-		s.AddTool(t, h)
+		// 统一包装：10s 调用超时 + 带耗时的调用日志
+		s.AddTool(t, WithCallGuard(h, 10*time.Second))
 	}
 	return s, nil
 }

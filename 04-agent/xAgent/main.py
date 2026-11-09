@@ -57,28 +57,45 @@ def build_session(
     )
 
 
-def inject_agents_md(session: AgentSession, project_root: Path) -> bool:
+def inject_agents_md(
+    session: AgentSession, project_root: Path, settings: AppSettings
+) -> Path | None:
     """AGENTS.md「一次注入，全程复用」。
 
-    会话首次加载时，若启动目录存在 AGENTS.md，就把内容作为一条
-    system 消息插入到主提示词之后；此后所有轮次随历史一起发送
-    （前缀稳定，缓存友好），并随 /save、/new 持久化到会话事件日志。
+    会话首次加载时，若启动目录存在项目规则文件（兼容 AGENTS.md/AGENT.md
+    等等价命名，可在 config.ini [AGENTS_MD] 段配置 filenames/enabled/max_chars），
+    就把内容截断到上限后作为一条 system 消息插入主提示词之后；此后所有轮次
+    随历史一起发送（前缀稳定，缓存友好），并随 /save、/new 持久化到会话事件日志，
+    /resume 恢复后直接复用、不会重复注入。文件缺失或为空时静默跳过，不报错。
     """
-    agents_md = project_root / "AGENTS.md"
-    if not agents_md.is_file():
-        return False
+    conf = settings.agents_md
+    if not conf.enabled:
+        return None
+    agents_md: Path | None = None
+    for name in (n.strip() for n in conf.filenames.split(",") if n.strip()):
+        candidate = project_root / name
+        if candidate.is_file():
+            agents_md = candidate
+            break
+    if agents_md is None:
+        return None
     try:
         content = agents_md.read_text(encoding="utf-8").strip()
     except OSError as exc:
         print(f"[AGENTS.md] 读取失败（已跳过注入）：{exc}", file=sys.stderr)
-        return False
+        return None
     if not content:
-        return False
+        return None
+    if len(content) > conf.max_chars:
+        content = (
+            content[: conf.max_chars].rstrip()
+            + f"\n\n…（内容过长，已截断到前 {conf.max_chars} 字符）"
+        )
     session.inject_system_message(
-        "以下是本项目 AGENTS.md 的内容（项目约定与工作指引），"
-        "请在本次会话中始终遵守：\n\n" + content
+        f"以下是本项目 {agents_md.name} 的内容（项目约定与工作指引），"
+        f"请在本次会话中始终遵守：\n\n" + content
     )
-    return True
+    return agents_md
 
 
 async def _run(settings: AppSettings, project_root: Path) -> int:
@@ -98,8 +115,9 @@ async def _run(settings: AppSettings, project_root: Path) -> int:
     session_store = SessionStore(project_root / ".agents" / "sessions")
 
     # AGENTS.md：一次注入，全程复用
-    if inject_agents_md(session, project_root):
-        mcp_log.get_logger().info("AGENTS.md 已注入会话：%s", project_root / "AGENTS.md")
+    injected = inject_agents_md(session, project_root, settings)
+    if injected is not None:
+        mcp_log.get_logger().info("项目规则文件已注入会话：%s", injected)
 
     # 延迟导入前端：确保 core 不依赖任何界面框架
     from tui.app import XAgentApp

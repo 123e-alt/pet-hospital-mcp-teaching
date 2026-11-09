@@ -43,7 +43,11 @@ class FileSystemToolkit:
         target = Path(path).expanduser()
         if not target.is_absolute():
             target = self.workspace / target
-        return target.resolve()
+        resolved = target.resolve()
+        # 路径边界保护：禁止 ../ 或绝对路径逃逸出工作目录
+        if resolved != self.workspace and self.workspace not in resolved.parents:
+            raise ValueError(f"路径越界：{path} 超出工作目录 {self.workspace}")
+        return resolved
 
     @staticmethod
     def _is_text_file(path: Path) -> bool:

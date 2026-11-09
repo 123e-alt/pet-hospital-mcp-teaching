@@ -19,6 +19,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -164,8 +165,10 @@ func runREST(args []string) error {
 		}
 	}
 
+	// 访问日志走标准库 log（带时间戳），不以 print 充当日志
+	accessLog := log.New(os.Stderr, "", log.LstdFlags)
 	logf := func(format string, args ...any) {
-		fmt.Printf("%s│%s "+format+"\n", append([]any{cDim, cReset}, args...)...)
+		accessLog.Printf(format, args...)
 	}
 	srv := api.New(db, logf)
 
@@ -291,8 +294,9 @@ func runDual(args []string) error {
 	}
 
 	// ===== REST goroutine =====
+	restAccessLog := log.New(os.Stderr, "", log.LstdFlags)
 	restSrv := api.New(db, func(format string, args ...any) {
-		fmt.Printf("%s│%s "+format+"\n", append([]any{cDim, cReset}, args...)...)
+		restAccessLog.Printf(format, args...)
 	})
 	restHTTP := &http.Server{
 		Addr:              *restAddr,

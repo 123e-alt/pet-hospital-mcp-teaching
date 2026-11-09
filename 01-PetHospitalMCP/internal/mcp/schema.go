@@ -12,6 +12,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"os"
+	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
@@ -148,19 +152,87 @@ func TextResult(text string) (*mcp.CallToolResult, error) {
 	return mcp.NewToolResultText(text), nil
 }
 
-// ErrResult 把业务错误转成 MCP 文本错误结果（不让 SDK 当协议错误）。
-// 对 store.ErrNotFound / store.ErrDuplicate 给出更友好的提示。
+// ---------------------------------------------------------------------------
+// 结构化错误：所有 tool 失败统一返回 {"ok":false,"error":{"code","msg"}}
+// ---------------------------------------------------------------------------
+
+// 稳定的业务错误码，供客户端/模型按码处理。
+const (
+	ErrCodeValidation = "VALIDATION_FAILED" // 参数缺失、格式非法、枚举越界
+	ErrCodeNotFound   = "NOT_FOUND"         // 记录不存在
+	ErrCodeDuplicate  = "DUPLICATE"         // 档案/记录已存在
+	ErrCodeInternal   = "INTERNAL_ERROR"    // 存储层或未知内部错误
+	ErrCodeTimeout    = "TIMEOUT"           // 调用超时（见 WithCallGuard）
+)
+
+// errorJSON 构造结构化错误结果（NewToolResultError 文本即 JSON，便于模型解析）。
+func errorJSON(code, msg string) *mcp.CallToolResult {
+	buf, _ := json.Marshal(map[string]any{
+		"ok":    false,
+		"error": map[string]string{"code": code, "msg": msg},
+	})
+	return mcp.NewToolResultError(string(buf))
+}
+
+// ErrResult 把业务错误转成结构化 MCP 错误结果（不让 SDK 当协议错误）。
+// 分类规则：store 哨兵错误 → NOT_FOUND/DUPLICATE；
+// 含参数校验特征文案 → VALIDATION_FAILED；其余 → INTERNAL_ERROR。
 func ErrResult(err error) *mcp.CallToolResult {
 	if err == nil {
 		return mcp.NewToolResultText("ok")
 	}
+	msg := err.Error()
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return mcp.NewToolResultError("记录不存在: " + err.Error())
+		return errorJSON(ErrCodeNotFound, "记录不存在: "+msg)
 	case errors.Is(err, store.ErrDuplicate):
-		return mcp.NewToolResultError("档案已存在: " + err.Error())
+		return errorJSON(ErrCodeDuplicate, "档案已存在: "+msg)
+	case isValidationMsg(msg):
+		return errorJSON(ErrCodeValidation, msg)
 	}
-	return mcp.NewToolResultError(err.Error())
+	return errorJSON(ErrCodeInternal, msg)
+}
+
+// isValidationMsg 识别 handlers 中的参数校验错误文案。
+func isValidationMsg(msg string) bool {
+	for _, kw := range []string{"参数解析失败", "不能为空", "必填", "无效", "格式", "至少", "超出", "非法"} {
+		if strings.Contains(msg, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// ---------------------------------------------------------------------------
+// 调用护栏：统一超时 + 调用日志（标准库 log，带时间戳）
+// ---------------------------------------------------------------------------
+
+// callLog 是 MCP tool 的调用日志器（替代 fmt.Print，满足工程日志要求）。
+var callLog = log.New(os.Stderr, "", log.LstdFlags)
+
+// WithCallGuard 包装 handler：调用超时（超时返回 TIMEOUT 结构化错误）+
+// 每次调用输出一条带耗时的日志（tool/result/duration）。
+func WithCallGuard(h Handler, timeout time.Duration) Handler {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		start := time.Now()
+		res, err := h(ctx, req)
+		dur := time.Since(start).Milliseconds()
+		switch {
+		case errors.Is(ctx.Err(), context.DeadlineExceeded):
+			callLog.Printf("tool=%s result=timeout dur=%dms", req.Params.Name, dur)
+			return errorJSON(ErrCodeTimeout,
+				fmt.Sprintf("调用超时（超过 %s），请缩小查询范围后重试", timeout)), nil
+		case err != nil:
+			callLog.Printf("tool=%s result=panic_error dur=%dms err=%q", req.Params.Name, dur, err)
+		case res != nil && res.IsError:
+			callLog.Printf("tool=%s result=biz_error dur=%dms", req.Params.Name, dur)
+		default:
+			callLog.Printf("tool=%s result=ok dur=%dms", req.Params.Name, dur)
+		}
+		return res, err
+	}
 }
 
 // ---------------------------------------------------------------------------

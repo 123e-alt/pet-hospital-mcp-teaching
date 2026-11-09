@@ -173,7 +173,7 @@ pethospital help                      # 查看子命令用法
 
 **Cline**（VS Code 扩展）：在 MCP Servers 配置中添加同形 JSON。
 
-### Tool 清单（21 个）
+### Tool 清单（22 个）
 
 | 分组 | tool name | 一句话描述 |
 | --- | --- | --- |
@@ -218,6 +218,28 @@ curl -N http://127.0.0.1:8081/sse
 # data: /message?sessionId=xxxx
 ```
 
+### 错误语义（结构化错误码）
+
+所有 tool 失败统一返回 JSON（`isError=true`），不出现裸异常、不原样透传上游：
+
+```json
+{ "ok": false, "error": { "code": "NOT_FOUND", "msg": "记录不存在: pet PET-999999 不存在" } }
+```
+
+| code | 含义 | 触发场景 |
+| --- | --- | --- |
+| `VALIDATION_FAILED` | 参数缺失 / 格式非法 / 枚举越界 | `id 不能为空`、`参数解析失败` |
+| `NOT_FOUND` | 记录不存在 | 查询或更新不存在的宠物 ID |
+| `DUPLICATE` | 档案已存在 | 重复创建 |
+| `INTERNAL_ERROR` | 存储层 / 未知内部错误 | 数据库 IO 失败等 |
+| `TIMEOUT` | 调用超时 | 单次 tool 调用超过 10s |
+
+### 工程配套（超时 / 调用日志 / 测试）
+
+- **超时**：每个 tool 在注册时由 `WithCallGuard` 统一包裹 `context.WithTimeout(10s)`，超时返回上表 `TIMEOUT` 结构化错误，而非悬挂或裸 panic。
+- **调用日志**：每次 tool 调用经标准库 `log` 输出一条带时间戳与耗时的日志（形如 `2026/11/09 15:04:05 tool=search_pets result=ok dur=3ms`），REST 访问日志同样走 `log.Logger`，不使用 `fmt.Print` 充当日志。
+- **测试**：`internal/mcp` 覆盖工具注册、参数校验、错误码分类、超时护栏（`guard_test.go`），`internal/store` 覆盖存储层；`go test ./...` 全部通过。
+
 ### 数据安全
 
 - MCP 服务**无鉴权**，仅支持回环地址（127.0.0.1/localhost/::1）启动，拒绝绑到 0.0.0.0
@@ -245,7 +267,7 @@ python server.py                       # 监听 http://127.0.0.1:8000/mcp
 | `MCP_HOST` | `127.0.0.1` | MCP 监听地址 |
 | `MCP_PORT` | `8000` | MCP 监听端口 |
 
-启动期自动 `GET /api/v1/workspaces` 取第一个工作区 slug 并缓存；调用工具时向 `POST /api/v1/workspace/{slug}/chat` 提问，返回 `textResponse`。
+工作区 slug 在首次调用时惰性解析并缓存；问答走 `POST /api/v1/workspace/{slug}/chat`，返回 `textResponse` 与来源文档。
 
 客户端配置（Streamable HTTP 端点）：
 
@@ -261,11 +283,18 @@ python server.py                       # 监听 http://127.0.0.1:8000/mcp
 
 **Cursor**（`.cursor/mcp.json`）同形 JSON。
 
-Tool 清单（1 个）：
+Tool 清单（6 个，覆盖工作区管理 / 文档上传与向量化 / 对话问答）：
 
 | tool name | 说明 |
 | --- | --- |
-| `ask_anythingllm` | 向 AnythingLLM 第一个工作区提问，基于该工作区已索引文档进行 RAG 检索并返回 AI 回答。入参 `question: str`，返回 `str` |
+| `list_workspaces` | 列出全部工作区（名称 + slug） |
+| `create_workspace` | 新建工作区 |
+| `list_documents` | 列出文档库中的文档 |
+| `upload_document` | 读取本地文件上传到 AnythingLLM 文档库 |
+| `add_document_to_workspace` | 把文档加入工作区并触发向量化 |
+| `ask_anythingllm` | 基于工作区已索引文档的 RAG 问答，附来源文档 |
+
+> 完整参数、示例与失败场景见 [../02-AnythingLLMMCP/README.md](../02-AnythingLLMMCP/README.md)（两个目录指向同一份实现，以 02 的文档为准）。
 
 > 关于协议版本：mcp 2.x 采用双时代设计——握手（initialize）在时代边界 `2025-11-25` 完成，现代 era `2026-07-28` 通过 `discover` 方法宣告（`discover supported_versions` 含 `2026-07-28`）。即本服务支持并宣告 2026-07-28，握手返回 2025-11-25 是协议既定行为。
 

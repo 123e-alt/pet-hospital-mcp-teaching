@@ -178,6 +178,24 @@ def test_tools_settings() -> None:
         check("cli: 超时参数生效", "超过 1 秒" in out, out[:120])
         out = tk.run_cli("python", ["-c", "print('a' * 100)"])
         check("cli: 截断参数生效", "已截断" in out and "原始长度" in out, out[:160])
+
+        # 文件工具：路径边界保护（禁止 ../ 逃逸出 workspace）
+        from core.tools.filesystem import FileSystemToolkit
+        fs = FileSystemToolkit(tmp)
+        try:
+            fs._resolve("../../outside.txt")
+            check("fs: 路径越界被拒绝", False, "未抛出异常")
+        except ValueError as exc:
+            check("fs: 路径越界被拒绝", "路径越界" in str(exc), str(exc)[:100])
+        check("fs: 正常路径不受影响", fs._resolve("a/b.txt").is_relative_to(tmp))
+
+        # 时间工具：跨平台 datetime 实现 + 闰年规则（整百年须被 400 整除）
+        from core.tools.datetime_tools import get_date, is_leap_year
+        now = get_date()
+        check("time: getDate 返回真实日期时间", "当前日期" in now and "当前时间" in now, now[:60])
+        check("time: 闰年规则正确",
+              "是闰年" in is_leap_year(2000) and "不是闰年" in is_leap_year(1900)
+              and "是闰年" in is_leap_year(2024) and "不是闰年" in is_leap_year(2023))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -226,17 +244,22 @@ def test_bootstrap() -> None:
 # ============================ 6. AGENTS.md 注入（main） ============================
 def test_agents_md() -> None:
     import main as entry
+    from types import SimpleNamespace
 
     from core.agent.session import AgentSession
+    from core.config import AgentsMdSettings
     from core.tools import build_default_registry
+
+    def make_settings(**kw) -> SimpleNamespace:
+        return SimpleNamespace(agents_md=AgentsMdSettings(**kw))
 
     tmp = Path(tempfile.mkdtemp(prefix="xagent_agents_"))
     try:
         (tmp / "AGENTS.md").write_text("项目规则：所有回复使用中文。\n不要修改 .env。", encoding="utf-8")
         sess = AgentSession(llm=FakeLLM(), tools=build_default_registry(tmp))
-        ok = entry.inject_agents_md(sess, tmp)
+        ok = entry.inject_agents_md(sess, tmp, make_settings())
         msgs = list(sess.messages)
-        check("AGENTS.md: 注入成功", ok and len(msgs) == 2 and "项目规则" in msgs[1]["content"])
+        check("AGENTS.md: 注入成功", ok is not None and len(msgs) == 2 and "项目规则" in msgs[1]["content"])
         # 会话保存应包含注入内容（持久化到会话事件日志）
         from core.agent.session_store import SessionStore
         store = SessionStore(tmp / "sessions")
@@ -245,7 +268,23 @@ def test_agents_md() -> None:
         check("AGENTS.md: 随会话持久化", any("AGENTS.md" in str(m.get("content", "")) for m in loaded))
         # 无文件时不注入
         sess2 = AgentSession(llm=FakeLLM(), tools=build_default_registry(tmp))
-        check("AGENTS.md: 无文件不注入", entry.inject_agents_md(sess2, tmp / "none") is False)
+        check("AGENTS.md: 无文件不注入", entry.inject_agents_md(sess2, tmp / "none", make_settings()) is None)
+        # 兼容命名：只有 AGENT.md 时也应注入
+        tmp2 = tmp / "compat"
+        tmp2.mkdir()
+        (tmp2 / "AGENT.md").write_text("单数命名规则", encoding="utf-8")
+        sess3 = AgentSession(llm=FakeLLM(), tools=build_default_registry(tmp))
+        check("AGENTS.md: 兼容 AGENT.md", entry.inject_agents_md(sess3, tmp2, make_settings()) is not None)
+        # 截断：max_chars 限长并标注
+        (tmp2 / "AGENT.md").write_text("长" * 5000, encoding="utf-8")
+        sess4 = AgentSession(llm=FakeLLM(), tools=build_default_registry(tmp))
+        entry.inject_agents_md(sess4, tmp2, make_settings(max_chars=1000))
+        body = sess4.messages[1]["content"]
+        check("AGENTS.md: 超长截断", "已截断" in body and len(body) < 1200)
+        # 开关关闭：不注入
+        sess5 = AgentSession(llm=FakeLLM(), tools=build_default_registry(tmp))
+        check("AGENTS.md: enabled=false 不注入",
+              entry.inject_agents_md(sess5, tmp2, make_settings(enabled=False)) is None)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

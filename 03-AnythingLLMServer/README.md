@@ -60,4 +60,4 @@ python server.py
 | `MCP_HOST` | `127.0.0.1` | MCP 监听地址 |
 | `MCP_PORT` | `8000` | MCP 监听端口 |
 
-启动后 MCP 端点为 `http://127.0.0.1:8000/mcp`，工具 `ask_anythingllm(question)` 会向第一个工作区提问并返回基于其文档的 AI 回答。
+启动后 MCP 端点为 `http://127.0.0.1:8000/mcp`，提供 3 类 6 个工具（工作区管理、文档上传/向量化、RAG 问答），详见 [../02-AnythingLLMMCP/README.md](../02-AnythingLLMMCP/README.md)。

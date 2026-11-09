@@ -1,27 +1,20 @@
-"""日期与闰年工具：通过本地系统命令获取时间，不重复实现系统逻辑。"""
+"""日期与闰年工具：使用标准库 datetime，跨平台（Windows/Linux/macOS），非硬编码。"""
 
 from __future__ import annotations
 
-import subprocess
+from datetime import datetime
 
 from core.tools.base import Tool
 
 
-def _run_command(command: str) -> str:
-    """执行本地命令并返回输出文本（自动兼容 UTF-8 / GBK 编码）。"""
-    raw = subprocess.run(command, shell=True, capture_output=True).stdout
-    for encoding in ("utf-8", "gbk"):
-        try:
-            return raw.decode(encoding).strip()
-        except UnicodeDecodeError:
-            continue
-    return raw.decode("utf-8", errors="ignore").strip()
-
-
 def get_date() -> str:
-    date_text = _run_command("date /t")
-    time_text = _run_command("time /t")
-    return f"当前日期：{date_text}，当前时间：{time_text}"
+    """返回当前日期时间（本地时区，跨平台一致）。"""
+    now = datetime.now().astimezone()
+    week = "一二三四五六日"[now.weekday()]
+    return (
+        f"当前日期：{now:%Y-%m-%d}（星期{week}），"
+        f"当前时间：{now:%H:%M:%S}，时区：{now:%z or '本地'}"
+    )
 
 
 def is_leap_year(year: int) -> str:

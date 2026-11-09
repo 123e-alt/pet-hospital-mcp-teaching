@@ -62,6 +62,18 @@ class ToolSettings:
 
 
 @dataclass(frozen=True)
+class AgentsMdSettings:
+    """AGENTS.md 注入参数，来自 config.ini 的 [AGENTS_MD] 段。"""
+
+    # 总开关：false 时完全跳过注入
+    enabled: bool = True
+    # 兼容文件名（逗号分隔，按顺序取第一个存在的）
+    filenames: str = "AGENTS.md,AGENT.md"
+    # 注入内容长度上限（字符），超出截断并标注
+    max_chars: int = 20000
+
+
+@dataclass(frozen=True)
 class SearchSettings:
     """联网搜索相关密钥配置。缺失时工具会给出提示而非让启动失败。"""
 
@@ -98,6 +110,7 @@ class AppSettings:
     context: ContextSettings = ContextSettings()
     tui: TuiSettings = TuiSettings()
     tools: ToolSettings = ToolSettings()
+    agents_md: AgentsMdSettings = AgentsMdSettings()
 
 
 def load_settings(config_path: str | Path | None = None) -> AppSettings:
@@ -181,6 +194,22 @@ def load_settings(config_path: str | Path | None = None) -> AppSettings:
         fetch_max_chars=_read_int(parser, "TOOLS", "fetch_max_chars", 8000, minimum=200),
     )
 
+    # [AGENTS_MD] 段为可选
+    agents_enabled = True
+    agents_filenames = "AGENTS.md,AGENT.md"
+    agents_max_chars = 20000
+    if parser.has_section("AGENTS_MD"):
+        enabled_text = parser.get("AGENTS_MD", "enabled", fallback="true").strip().lower()
+        if enabled_text in ("false", "0", "no", "off"):
+            agents_enabled = False
+        agents_filenames = (
+            parser.get("AGENTS_MD", "filenames", fallback=agents_filenames).strip()
+            or agents_filenames
+        )
+        agents_max_chars = _read_int(
+            parser, "AGENTS_MD", "max_chars", 20000, minimum=500
+        )
+
     return AppSettings(
         llm=LLMSettings(api_key=api_key, base_url=base_url, model_name=model_name),
         workspace=workspace.resolve(),
@@ -197,6 +226,11 @@ def load_settings(config_path: str | Path | None = None) -> AppSettings:
         context=context_settings,
         tui=TuiSettings(flush_interval=tui_flush),
         tools=tool_settings,
+        agents_md=AgentsMdSettings(
+            enabled=agents_enabled,
+            filenames=agents_filenames,
+            max_chars=agents_max_chars,
+        ),
     )
 
 
@@ -244,6 +278,14 @@ summary_max_tokens = 8000
 [TUI]
 ; 流式输出刷新间隔（秒）
 flush_interval = 0.05
+
+[AGENTS_MD]
+; 启动时把项目规则文件作为 system 消息注入会话（一次注入，全程复用）
+enabled = true
+; 兼容文件名（逗号分隔，按顺序取第一个存在的）
+filenames = AGENTS.md,AGENT.md
+; 注入内容长度上限（字符），超出截断并标注
+max_chars = 20000
 
 [TOOLS]
 ; RunCli 命令超时（秒）与返回上限（字符）
